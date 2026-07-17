@@ -1,0 +1,1282 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Gemwood Escape</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    * { box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background: #101923; }
+    body { user-select: none; touch-action: none; }
+    canvas { display: block; width: 100%; height: 100%; image-rendering: auto; }
+
+    #hud {
+      position: fixed;
+      inset: 14px auto auto 14px;
+      display: grid;
+      gap: 8px;
+      z-index: 3;
+      pointer-events: none;
+      max-width: min(390px, calc(100vw - 28px));
+    }
+    .panel {
+      background: rgba(13, 22, 31, .82);
+      border: 1px solid rgba(255,255,255,.14);
+      border-radius: 14px;
+      box-shadow: 0 12px 30px rgba(0,0,0,.28);
+      backdrop-filter: blur(10px);
+      padding: 10px 13px;
+    }
+    #stats {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px 16px;
+      font-weight: 800;
+      letter-spacing: .01em;
+    }
+    #stats span { white-space: nowrap; }
+    #status { font-size: 14px; line-height: 1.35; color: #d8e7f2; }
+    #status strong { color: #fff; }
+    #danger {
+      display: none;
+      padding: 8px 12px;
+      background: rgba(138, 18, 32, .9);
+      border-color: rgba(255, 115, 129, .6);
+      font-weight: 900;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      animation: pulse 0.75s infinite alternate;
+    }
+    @keyframes pulse { from { transform: scale(1); } to { transform: scale(1.025); } }
+
+    #message {
+      position: fixed;
+      left: 50%; top: 50%;
+      transform: translate(-50%, -50%);
+      z-index: 5;
+      width: min(620px, calc(100vw - 32px));
+      background: rgba(9, 16, 24, .94);
+      border: 1px solid rgba(255,255,255,.18);
+      border-radius: 22px;
+      padding: 24px;
+      box-shadow: 0 24px 80px rgba(0,0,0,.5);
+      text-align: center;
+    }
+    #message h1 { margin: 0 0 8px; font-size: clamp(30px, 6vw, 54px); }
+    #message p { margin: 8px 0; color: #cfdae4; line-height: 1.5; }
+    #message .keys { color: #fff; font-weight: 800; }
+    button {
+      appearance: none;
+      border: 0;
+      border-radius: 12px;
+      padding: 12px 18px;
+      margin-top: 14px;
+      background: linear-gradient(180deg, #53a9ff, #1672da);
+      color: white;
+      font-size: 16px;
+      font-weight: 900;
+      cursor: pointer;
+      box-shadow: 0 8px 22px rgba(27, 123, 221, .35);
+    }
+    button:hover { filter: brightness(1.08); }
+
+    #mobileControls {
+      display: none;
+      position: fixed;
+      inset: auto 0 max(12px, env(safe-area-inset-bottom)) 0;
+      z-index: 4;
+      pointer-events: none;
+      padding: 0 18px;
+      justify-content: space-between;
+      align-items: end;
+    }
+    .dpad {
+      width: 154px;
+      display: grid;
+      grid-template-columns: repeat(3, 48px);
+      grid-template-rows: repeat(3, 48px);
+      gap: 5px;
+      pointer-events: auto;
+    }
+    .touch {
+      margin: 0;
+      padding: 0;
+      min-width: 48px;
+      min-height: 48px;
+      border-radius: 14px;
+      background: rgba(10, 20, 30, .72);
+      border: 1px solid rgba(255,255,255,.25);
+      box-shadow: 0 8px 18px rgba(0,0,0,.28);
+      font-size: 22px;
+      touch-action: none;
+    }
+    .touch.up { grid-column: 2; grid-row: 1; }
+    .touch.left { grid-column: 1; grid-row: 2; }
+    .touch.down { grid-column: 2; grid-row: 2; }
+    .touch.right { grid-column: 3; grid-row: 2; }
+    .hideButton {
+      pointer-events: auto;
+      width: 92px;
+      height: 72px;
+      margin: 0;
+      border-radius: 20px;
+      background: rgba(31, 115, 67, .84);
+      border: 1px solid rgba(172,255,199,.42);
+      font-size: 14px;
+      letter-spacing: .05em;
+    }
+    @media (pointer: coarse), (max-width: 700px) {
+      #mobileControls { display: flex; }
+      #hud { inset: 8px 8px auto 8px; }
+      #status { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <canvas id="game" aria-label="Gemwood Escape game"></canvas>
+
+  <div id="hud">
+    <div class="panel" id="stats">
+      <span>💎 <b id="score">0</b>/<b id="totalGems">0</b></span>
+      <span>💙 <b id="lives">3</b></span>
+      <span>⏱️ <b id="timer">--</b></span>
+      <span id="hiddenStat">👁️ Visible</span>
+    </div>
+    <div class="panel" id="danger">Red swarm incoming — find cover!</div>
+    <div class="panel" id="status">
+      Move with <strong>WASD</strong> or <strong>arrow keys</strong>. Press <strong>Space</strong> or <strong>E</strong> beside a tree or inside a bush to hide. Move again to leave cover.
+    </div>
+  </div>
+
+  <div id="message">
+    <h1>Gemwood Escape</h1>
+    <p>Collect every gem scattered across the blocky landscape.</p>
+    <p>When the red swarm arrives, hide in a bush or climb a tree until the danger passes.</p>
+    <p class="keys">WASD / arrows to move · Space or E to hide</p>
+    <button id="startButton">Start game</button>
+  </div>
+
+  <div id="mobileControls" aria-hidden="true">
+    <div class="dpad">
+      <button class="touch up" data-key="ArrowUp">▲</button>
+      <button class="touch left" data-key="ArrowLeft">◀</button>
+      <button class="touch down" data-key="ArrowDown">▼</button>
+      <button class="touch right" data-key="ArrowRight">▶</button>
+    </div>
+    <button class="touch hideButton" data-action="hide">HIDE</button>
+  </div>
+
+<script>
+(() => {
+  'use strict';
+
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
+  const scoreEl = document.getElementById('score');
+  const totalGemsEl = document.getElementById('totalGems');
+  const livesEl = document.getElementById('lives');
+  const timerEl = document.getElementById('timer');
+  const hiddenStatEl = document.getElementById('hiddenStat');
+  const dangerEl = document.getElementById('danger');
+  const statusEl = document.getElementById('status');
+  const messageEl = document.getElementById('message');
+  const startButton = document.getElementById('startButton');
+
+  const TAU = Math.PI * 2;
+  const TILE = 48;
+  const WORLD_COLS = 42;
+  const WORLD_ROWS = 30;
+  const WORLD_W = WORLD_COLS * TILE;
+  const WORLD_H = WORLD_ROWS * TILE;
+  const PLAYER_RADIUS = 15;
+  const ENEMY_RADIUS = 14;
+  const GEM_COUNT = 28;
+  const FIRST_WAVE_DELAY = 13;
+  const WAVE_INTERVAL = 24;
+  const WAVE_DURATION = 13;
+  const WARNING_TIME = 4;
+
+  let dpr = 1;
+  let viewportW = innerWidth;
+  let viewportH = innerHeight;
+  let lastTime = performance.now();
+  let gameStarted = false;
+  let gameOver = false;
+  let victory = false;
+  let elapsed = 0;
+  let nextWaveAt = FIRST_WAVE_DELAY;
+  let waveEndsAt = -1;
+  let waveNumber = 0;
+  let camera = { x: 0, y: 0 };
+  let shake = 0;
+  let audioCtx = null;
+
+  const keys = Object.create(null);
+  const objects = [];
+  const gems = [];
+  const enemies = [];
+  const particles = [];
+  const floatingTexts = [];
+  const terrain = [];
+
+  const player = {
+    x: WORLD_W * 0.5,
+    y: WORLD_H * 0.5,
+    speed: 210,
+    lives: 3,
+    score: 0,
+    hidden: false,
+    cover: null,
+    invulnerable: 0,
+    facingX: 1,
+    facingY: 0,
+    vx: 0,
+    vy: 0,
+    roll: 0,
+    squish: 0,
+    trailTimer: 0
+  };
+
+  function resize() {
+    dpr = Math.min(2, window.devicePixelRatio || 1);
+    viewportW = window.innerWidth;
+    viewportH = window.innerHeight;
+    canvas.width = Math.round(viewportW * dpr);
+    canvas.height = Math.round(viewportH * dpr);
+    canvas.style.width = viewportW + 'px';
+    canvas.style.height = viewportH + 'px';
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  addEventListener('resize', resize);
+  resize();
+
+  function mulberry32(seed) {
+    return function() {
+      let t = seed += 0x6D2B79F5;
+      t = Math.imul(t ^ t >>> 15, t | 1);
+      t ^= t + Math.imul(t ^ t >>> 7, t | 61);
+      return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    };
+  }
+  const rng = mulberry32(742021);
+  const rand = (min, max) => min + rng() * (max - min);
+  const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
+  const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+
+  function buildWorld() {
+    terrain.length = 0;
+    objects.length = 0;
+    gems.length = 0;
+    enemies.length = 0;
+    particles.length = 0;
+    floatingTexts.length = 0;
+
+    for (let row = 0; row < WORLD_ROWS; row++) {
+      const line = [];
+      for (let col = 0; col < WORLD_COLS; col++) {
+        const noise = rng();
+        let type = 'grass';
+        if (noise < 0.09) type = 'darkGrass';
+        if ((row > 13 && row < 17) || (col > 19 && col < 22)) {
+          if (rng() < 0.72) type = 'path';
+        }
+        line.push(type);
+      }
+      terrain.push(line);
+    }
+
+    addPond(5, 4, 5, 4);
+    addPond(31, 20, 6, 5);
+    addPond(7, 22, 4, 4);
+
+    placeObjects('tree', 60, 25, true);
+    placeObjects('bush', 48, 20, false);
+    placeObjects('rock', 36, 22, true);
+
+    for (let i = 0; i < GEM_COUNT; i++) {
+      const p = findOpenPosition(60, true);
+      gems.push({
+        x: p.x, y: p.y, collected: false, collectAge: 0, collectDuration: .68,
+        spin: rand(0, TAU), hue: rand(175, 310), sparkle: rand(0, TAU)
+      });
+    }
+
+    totalGemsEl.textContent = GEM_COUNT;
+  }
+
+  function addPond(col, row, w, h) {
+    for (let y = row; y < row + h; y++) {
+      for (let x = col; x < col + w; x++) {
+        const edge = x === col || y === row || x === col + w - 1 || y === row + h - 1;
+        if (!edge || rng() > 0.25) terrain[y][x] = 'water';
+      }
+    }
+  }
+
+  function placeObjects(type, count, minGap, solid) {
+    for (let i = 0; i < count; i++) {
+      const p = findOpenPosition(minGap, false);
+      const radius = type === 'tree' ? 23 : type === 'bush' ? 22 : 18;
+      objects.push({
+        type, x: p.x, y: p.y, radius, solid,
+        sway: rand(0, TAU), size: rand(.82, 1.18)
+      });
+    }
+  }
+
+  function findOpenPosition(minGap = 30, avoidCover = false) {
+    for (let tries = 0; tries < 500; tries++) {
+      const x = rand(TILE * 1.5, WORLD_W - TILE * 1.5);
+      const y = rand(TILE * 1.5, WORLD_H - TILE * 1.5);
+      const tile = tileAt(x, y);
+      if (tile === 'water') continue;
+      if (Math.hypot(x - player.x, y - player.y) < 170) continue;
+      let good = true;
+      for (const obj of objects) {
+        if (Math.hypot(x - obj.x, y - obj.y) < minGap + obj.radius) { good = false; break; }
+        if (avoidCover && (obj.type === 'tree' || obj.type === 'bush') && Math.hypot(x - obj.x, y - obj.y) < 80) { good = false; break; }
+      }
+      if (good) return { x, y };
+    }
+    return { x: rand(100, WORLD_W - 100), y: rand(100, WORLD_H - 100) };
+  }
+
+  function tileAt(x, y) {
+    const col = clamp(Math.floor(x / TILE), 0, WORLD_COLS - 1);
+    const row = clamp(Math.floor(y / TILE), 0, WORLD_ROWS - 1);
+    return terrain[row]?.[col] || 'water';
+  }
+
+  function resetGame() {
+    player.x = WORLD_W * .5;
+    player.y = WORLD_H * .5;
+    player.lives = 3;
+    player.score = 0;
+    player.hidden = false;
+    player.cover = null;
+    player.invulnerable = 0;
+    player.vx = 0;
+    player.vy = 0;
+    player.roll = 0;
+    player.squish = 0;
+    elapsed = 0;
+    nextWaveAt = FIRST_WAVE_DELAY;
+    waveEndsAt = -1;
+    waveNumber = 0;
+    gameOver = false;
+    victory = false;
+    buildWorld();
+    updateHud();
+  }
+
+  function startGame() {
+    ensureAudio();
+    resetGame();
+    gameStarted = true;
+    messageEl.style.display = 'none';
+  }
+
+  function endGame(won) {
+    gameOver = !won;
+    victory = won;
+    enemies.length = 0;
+    messageEl.style.display = 'block';
+    messageEl.innerHTML = won
+      ? `<h1>You found every gem!</h1><p>Final score: <strong>${player.score}</strong>. The forest is safe—for now.</p><p class="keys">Press R or use the button to play again.</p><button id="restartButton">Play again</button>`
+      : `<h1>The red swarm caught you</h1><p>You collected <strong>${player.score}</strong> of ${GEM_COUNT} gems.</p><p class="keys">Press R or use the button to try again.</p><button id="restartButton">Try again</button>`;
+    document.getElementById('restartButton').addEventListener('click', startGame);
+    playTone(won ? 740 : 130, won ? .35 : .6, won ? 'sine' : 'sawtooth', .09);
+  }
+
+  startButton.addEventListener('click', startGame);
+
+  addEventListener('keydown', (e) => {
+    const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+    if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' ','Spacebar'].includes(e.key)) e.preventDefault();
+    keys[key] = true;
+    if ((key === ' ' || key === 'e') && gameStarted && !gameOver && !victory) tryHide();
+    if (key === 'r' && (gameOver || victory)) startGame();
+  });
+  addEventListener('keyup', (e) => {
+    const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+    keys[key] = false;
+  });
+  addEventListener('blur', () => Object.keys(keys).forEach(k => keys[k] = false));
+
+  document.querySelectorAll('[data-key]').forEach(button => {
+    const key = button.dataset.key;
+    const down = (e) => { e.preventDefault(); keys[key] = true; };
+    const up = (e) => { e.preventDefault(); keys[key] = false; };
+    button.addEventListener('pointerdown', down);
+    button.addEventListener('pointerup', up);
+    button.addEventListener('pointercancel', up);
+    button.addEventListener('pointerleave', up);
+  });
+  document.querySelector('[data-action="hide"]').addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    if (gameStarted) tryHide();
+  });
+
+  function tryHide() {
+    if (player.hidden) {
+      leaveCover();
+      return;
+    }
+    const cover = nearestCover();
+    if (!cover) {
+      statusEl.innerHTML = 'Move closer to a <strong>tree</strong> or stand inside a <strong>bush</strong> to hide.';
+      playTone(180, .08, 'square', .025);
+      return;
+    }
+    player.hidden = true;
+    player.cover = cover;
+    if (cover.type === 'tree') {
+      player.x = cover.x;
+      player.y = cover.y - 8;
+    } else {
+      player.x = cover.x;
+      player.y = cover.y;
+    }
+    statusEl.innerHTML = cover.type === 'tree'
+      ? '<strong>Hidden in the treetop.</strong> Stay still until the red swarm passes.'
+      : '<strong>Hidden inside the bush.</strong> Stay still until the red swarm passes.';
+    playTone(460, .1, 'sine', .035);
+    updateHud();
+  }
+
+  function leaveCover() {
+    const oldCover = player.cover;
+    if (oldCover) movePlayerOutsideCover(oldCover);
+    player.hidden = false;
+    player.cover = null;
+    player.vx = 0;
+    player.vy = 0;
+    statusEl.innerHTML = 'You left cover. Keep collecting gems.';
+    updateHud();
+  }
+
+  function movePlayerOutsideCover(cover) {
+    const baseDistance = cover.type === 'tree' ? 53 : 38;
+    const preferredAngle = Math.atan2(player.facingY || 1, player.facingX || 0);
+    const offsets = [0, Math.PI / 2, -Math.PI / 2, Math.PI, Math.PI / 4, -Math.PI / 4];
+    for (const offset of offsets) {
+      const angle = preferredAngle + offset;
+      const x = clamp(cover.x + Math.cos(angle) * baseDistance, PLAYER_RADIUS, WORLD_W - PLAYER_RADIUS);
+      const y = clamp(cover.y + Math.sin(angle) * baseDistance, PLAYER_RADIUS, WORLD_H - PLAYER_RADIUS);
+      if (!collidesSolid(x, y, PLAYER_RADIUS)) {
+        player.x = x;
+        player.y = y;
+        return;
+      }
+    }
+  }
+
+  function nearestCover() {
+    let best = null;
+    let bestDist = Infinity;
+    for (const obj of objects) {
+      if (obj.type !== 'tree' && obj.type !== 'bush') continue;
+      const d = Math.hypot(player.x - obj.x, player.y - obj.y);
+      const limit = obj.type === 'tree' ? 52 : 34;
+      if (d < limit && d < bestDist) { best = obj; bestDist = d; }
+    }
+    return best;
+  }
+
+  function update(dt) {
+    if (!gameStarted || gameOver || victory) return;
+    elapsed += dt;
+    if (player.invulnerable > 0) player.invulnerable -= dt;
+    shake = Math.max(0, shake - dt * 3);
+
+    updatePlayer(dt);
+    updateGems(dt);
+    updateWaves();
+    updateEnemies(dt);
+    updateParticles(dt);
+    updateFloatingTexts(dt);
+    updateCamera(dt);
+    updateHud();
+  }
+
+  function updatePlayer(dt) {
+    let inputX = 0, inputY = 0;
+    if (keys.w || keys.ArrowUp) inputY -= 1;
+    if (keys.s || keys.ArrowDown) inputY += 1;
+    if (keys.a || keys.ArrowLeft) inputX -= 1;
+    if (keys.d || keys.ArrowRight) inputX += 1;
+
+    if (inputX || inputY) {
+      if (player.hidden) leaveCover();
+      const len = Math.hypot(inputX, inputY);
+      inputX /= len;
+      inputY /= len;
+      player.facingX += (inputX - player.facingX) * Math.min(1, dt * 14);
+      player.facingY += (inputY - player.facingY) * Math.min(1, dt * 14);
+    }
+
+    const targetVX = inputX * player.speed;
+    const targetVY = inputY * player.speed;
+    const response = inputX || inputY ? 11 : 8;
+    const blend = 1 - Math.exp(-response * dt);
+    player.vx += (targetVX - player.vx) * blend;
+    player.vy += (targetVY - player.vy) * blend;
+
+    if (Math.abs(player.vx) < .35) player.vx = 0;
+    if (Math.abs(player.vy) < .35) player.vy = 0;
+
+    const beforeX = player.x;
+    const beforeY = player.y;
+    moveEntity(player, player.vx * dt, player.vy * dt, PLAYER_RADIUS);
+    if (Math.abs(player.x - beforeX) < .01) player.vx *= .25;
+    if (Math.abs(player.y - beforeY) < .01) player.vy *= .25;
+
+    const speed = Math.hypot(player.vx, player.vy);
+    player.roll += speed * dt / PLAYER_RADIUS;
+    player.squish += ((speed / player.speed) - player.squish) * Math.min(1, dt * 10);
+
+    if (speed > 35) {
+      player.trailTimer -= dt;
+      if (player.trailTimer <= 0) {
+        const nx = player.vx / speed, ny = player.vy / speed;
+        particles.push({ x: player.x - nx * 10, y: player.y - ny * 10, vx: rand(-12,12), vy: rand(-12,12), life: .32, maxLife: .32, size: rand(2,5), type: 'dust' });
+        player.trailTimer = .055;
+      }
+    }
+  }
+
+  function moveEntity(entity, dx, dy, radius) {
+    const targetX = clamp(entity.x + dx, radius, WORLD_W - radius);
+    if (!collidesSolid(targetX, entity.y, radius)) entity.x = targetX;
+    const targetY = clamp(entity.y + dy, radius, WORLD_H - radius);
+    if (!collidesSolid(entity.x, targetY, radius)) entity.y = targetY;
+  }
+
+  function collidesSolid(x, y, radius) {
+    const samples = [
+      [x-radius, y], [x+radius, y], [x, y-radius], [x, y+radius],
+      [x-radius*.7, y-radius*.7], [x+radius*.7, y-radius*.7],
+      [x-radius*.7, y+radius*.7], [x+radius*.7, y+radius*.7]
+    ];
+    if (samples.some(([sx, sy]) => tileAt(sx, sy) === 'water')) return true;
+    for (const obj of objects) {
+      if (!obj.solid) continue;
+      const hitRadius = obj.type === 'tree' ? obj.radius * .58 : obj.radius * .8;
+      if (Math.hypot(x - obj.x, y - obj.y) < radius + hitRadius) return true;
+    }
+    return false;
+  }
+
+  function updateGems(dt) {
+    for (const gem of gems) {
+      gem.spin += dt * (gem.collected ? 8.5 : 2.8);
+      gem.sparkle += dt * 4;
+      if (gem.collected) {
+        gem.collectAge += dt;
+        continue;
+      }
+      if (Math.hypot(player.x - gem.x, player.y - gem.y) < PLAYER_RADIUS + 17) {
+        gem.collected = true;
+        gem.collectAge = 0;
+        player.score++;
+        burst(gem.x, gem.y, 'gem', 25);
+        floatingTexts.push({ x: gem.x, y: gem.y - 14, text: '+1 GEM', life: .9, maxLife: .9 });
+        shake = Math.max(shake, .16);
+        playGemChime(player.score);
+        if (player.score === GEM_COUNT) endGame(true);
+      }
+    }
+  }
+
+  function playGemChime(score) {
+    playTone(560 + score * 7, .10, 'sine', .045);
+    setTimeout(() => playTone(760 + score * 5, .12, 'triangle', .035), 55);
+  }
+
+  function updateWaves() {
+    const waveActive = waveEndsAt > elapsed;
+    if (!waveActive && elapsed >= nextWaveAt) startWave();
+    if (!waveActive && waveEndsAt > 0 && elapsed >= waveEndsAt) {
+      enemies.length = 0;
+      waveEndsAt = -1;
+    }
+  }
+
+  function startWave() {
+    waveNumber++;
+    waveEndsAt = elapsed + WAVE_DURATION;
+    nextWaveAt = elapsed + WAVE_INTERVAL;
+    const count = Math.min(4 + waveNumber, 9);
+    const fromLeft = waveNumber % 2 === 1;
+    for (let i = 0; i < count; i++) {
+      const x = fromLeft ? camera.x - 70 - rand(0, 120) : camera.x + viewportW + 70 + rand(0,120);
+      const y = clamp(player.y + (i - (count - 1) / 2) * 58 + rand(-35,35), 40, WORLD_H - 40);
+      enemies.push({
+        x: clamp(x, 25, WORLD_W - 25),
+        y,
+        speed: rand(125, 155) + waveNumber * 3,
+        passDir: fromLeft ? 1 : -1,
+        alert: 0,
+        phase: rand(0, TAU),
+        targetOffset: rand(-80,80),
+        vx: fromLeft ? rand(80, 120) : rand(-120, -80),
+        vy: 0
+      });
+    }
+    shake = .45;
+    playTone(170, .45, 'sawtooth', .05);
+    statusEl.innerHTML = '<strong>Red swarm!</strong> Break line of sight and hide in nearby cover.';
+  }
+
+  function updateEnemies(dt) {
+    for (let i = enemies.length - 1; i >= 0; i--) {
+      const enemy = enemies[i];
+      enemy.phase += dt * 5;
+      let targetX = enemy.x + enemy.passDir * 200;
+      let targetY = player.y + enemy.targetOffset;
+      const sees = canSeePlayer(enemy);
+
+      if (sees) {
+        enemy.alert = 1.2;
+        targetX = player.x;
+        targetY = player.y;
+      } else {
+        enemy.alert = Math.max(0, enemy.alert - dt);
+        if (enemy.alert > 0 && !player.hidden) {
+          targetX = player.x;
+          targetY = player.y;
+        }
+      }
+
+      let dx = targetX - enemy.x;
+      let dy = targetY - enemy.y;
+      const len = Math.hypot(dx, dy) || 1;
+      dx /= len; dy /= len;
+
+      const probe = enemy.speed * dt * 1.6;
+      if (collidesSolid(enemy.x + dx * probe, enemy.y + dy * probe, ENEMY_RADIUS)) {
+        const leftX = -dy, leftY = dx;
+        const rightX = dy, rightY = -dx;
+        const leftOpen = !collidesSolid(enemy.x + leftX * probe, enemy.y + leftY * probe, ENEMY_RADIUS);
+        if (leftOpen) { dx = leftX; dy = leftY; }
+        else { dx = rightX; dy = rightY; }
+      }
+      const desiredVX = dx * enemy.speed;
+      const desiredVY = dy * enemy.speed;
+      const steer = 1 - Math.exp(-5.5 * dt);
+      enemy.vx += (desiredVX - enemy.vx) * steer;
+      enemy.vy += (desiredVY - enemy.vy) * steer;
+      moveEntity(enemy, enemy.vx * dt, enemy.vy * dt, ENEMY_RADIUS);
+
+      if (!player.hidden && player.invulnerable <= 0 && Math.hypot(enemy.x - player.x, enemy.y - player.y) < ENEMY_RADIUS + PLAYER_RADIUS) {
+        hitPlayer();
+        break;
+      }
+
+      const offscreenFar = enemy.passDir > 0
+        ? enemy.x > camera.x + viewportW + 260
+        : enemy.x < camera.x - 260;
+      if (offscreenFar || elapsed > waveEndsAt) enemies.splice(i, 1);
+    }
+  }
+
+  function canSeePlayer(enemy) {
+    if (player.hidden || player.invulnerable > 0) return false;
+    const maxSight = 420;
+    const d = Math.hypot(enemy.x - player.x, enemy.y - player.y);
+    if (d > maxSight) return false;
+    const steps = Math.ceil(d / 22);
+    for (let i = 1; i < steps; i++) {
+      const t = i / steps;
+      const x = enemy.x + (player.x - enemy.x) * t;
+      const y = enemy.y + (player.y - enemy.y) * t;
+      if (tileAt(x, y) === 'water') return false;
+      for (const obj of objects) {
+        if (obj.type === 'tree' || obj.type === 'rock') {
+          if (Math.hypot(x - obj.x, y - obj.y) < obj.radius * .75) return false;
+        }
+      }
+    }
+    return true;
+  }
+
+  function hitPlayer() {
+    player.lives--;
+    player.invulnerable = 2;
+    player.hidden = false;
+    player.cover = null;
+    burst(player.x, player.y, 'hit', 26);
+    shake = .8;
+    playTone(90, .5, 'square', .08);
+    enemies.length = 0;
+    waveEndsAt = -1;
+    nextWaveAt = elapsed + 10;
+    const safe = findSafeRespawn();
+    player.x = safe.x;
+    player.y = safe.y;
+    statusEl.innerHTML = player.lives > 0
+      ? '<strong>You were spotted.</strong> The swarm has scattered; find the remaining gems.'
+      : '<strong>No lives remaining.</strong>';
+    if (player.lives <= 0) endGame(false);
+  }
+
+  function findSafeRespawn() {
+    const candidates = [
+      {x: WORLD_W*.5, y: WORLD_H*.5},
+      {x: WORLD_W*.45, y: WORLD_H*.55},
+      {x: WORLD_W*.55, y: WORLD_H*.45}
+    ];
+    return candidates.find(p => !collidesSolid(p.x, p.y, PLAYER_RADIUS)) || {x: TILE*2, y: TILE*2};
+  }
+
+  function burst(x, y, type, count) {
+    for (let i = 0; i < count; i++) {
+      const a = rand(0, TAU);
+      const speed = rand(40, 180);
+      particles.push({
+        x, y,
+        vx: Math.cos(a) * speed,
+        vy: Math.sin(a) * speed,
+        life: rand(.35, .8),
+        maxLife: .8,
+        size: rand(3, 8),
+        rotation: rand(0, TAU),
+        spin: rand(-8, 8),
+        type
+      });
+    }
+  }
+
+  function updateParticles(dt) {
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const p = particles[i];
+      p.life -= dt;
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.rotation = (p.rotation || 0) + (p.spin || 0) * dt;
+      p.vx *= Math.pow(.05, dt);
+      p.vy *= Math.pow(.05, dt);
+      if (p.life <= 0) particles.splice(i, 1);
+    }
+  }
+
+  function updateFloatingTexts(dt) {
+    for (let i = floatingTexts.length - 1; i >= 0; i--) {
+      const text = floatingTexts[i];
+      text.life -= dt;
+      text.y -= 34 * dt;
+      if (text.life <= 0) floatingTexts.splice(i, 1);
+    }
+  }
+
+  function updateCamera(dt) {
+    const targetX = clamp(player.x - viewportW / 2, 0, Math.max(0, WORLD_W - viewportW));
+    const targetY = clamp(player.y - viewportH / 2, 0, Math.max(0, WORLD_H - viewportH));
+    const cameraBlend = 1 - Math.exp(-9 * dt);
+    camera.x += (targetX - camera.x) * cameraBlend;
+    camera.y += (targetY - camera.y) * cameraBlend;
+  }
+
+  function updateHud() {
+    scoreEl.textContent = player.score;
+    livesEl.textContent = player.lives;
+    hiddenStatEl.textContent = player.hidden ? '🌿 Hidden' : '👁️ Visible';
+    hiddenStatEl.style.color = player.hidden ? '#91f0ad' : '#fff';
+
+    const waveActive = waveEndsAt > elapsed;
+    const untilWave = Math.max(0, nextWaveAt - elapsed);
+    if (waveActive) {
+      timerEl.textContent = `${Math.ceil(waveEndsAt - elapsed)}s danger`;
+      dangerEl.style.display = 'block';
+      dangerEl.textContent = player.hidden ? 'Hidden — stay still' : 'Red swarm active — hide!';
+    } else {
+      timerEl.textContent = `${Math.ceil(untilWave)}s`;
+      dangerEl.style.display = untilWave <= WARNING_TIME ? 'block' : 'none';
+      if (untilWave <= WARNING_TIME) dangerEl.textContent = 'Red swarm incoming — find cover!';
+    }
+  }
+
+  function render() {
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, viewportW, viewportH);
+    ctx.fillStyle = '#0e1720';
+    ctx.fillRect(0, 0, viewportW, viewportH);
+
+    const shakeX = shake > 0 ? rand(-shake * 8, shake * 8) : 0;
+    const shakeY = shake > 0 ? rand(-shake * 8, shake * 8) : 0;
+    ctx.save();
+    ctx.translate(-camera.x + shakeX, -camera.y + shakeY);
+
+    drawTerrain();
+    drawGems();
+
+    const drawables = [...objects, ...enemies.map(e => ({...e, type:'enemy'})), { ...player, type:'player' }]
+      .sort((a, b) => a.y - b.y);
+    for (const item of drawables) {
+      if (!isVisible(item.x, item.y, 90)) continue;
+      if (item.type === 'tree') drawTree(item);
+      else if (item.type === 'bush') drawBush(item);
+      else if (item.type === 'rock') drawRock(item);
+      else if (item.type === 'enemy') drawEnemy(item);
+      else drawPlayer(item);
+    }
+
+    drawParticles();
+    drawFloatingTexts();
+    drawCoverPrompt();
+    ctx.restore();
+
+    drawVignette();
+    if (waveEndsAt > elapsed) drawDangerTint();
+    drawMinimap();
+  }
+
+  function isVisible(x, y, margin = 0) {
+    return x > camera.x - margin && x < camera.x + viewportW + margin &&
+           y > camera.y - margin && y < camera.y + viewportH + margin;
+  }
+
+  function drawTerrain() {
+    const startCol = clamp(Math.floor(camera.x / TILE) - 1, 0, WORLD_COLS - 1);
+    const endCol = clamp(Math.ceil((camera.x + viewportW) / TILE) + 1, 0, WORLD_COLS - 1);
+    const startRow = clamp(Math.floor(camera.y / TILE) - 1, 0, WORLD_ROWS - 1);
+    const endRow = clamp(Math.ceil((camera.y + viewportH) / TILE) + 1, 0, WORLD_ROWS - 1);
+
+    for (let row = startRow; row <= endRow; row++) {
+      for (let col = startCol; col <= endCol; col++) {
+        const x = col * TILE, y = row * TILE;
+        const type = terrain[row][col];
+        if (type === 'water') {
+          ctx.fillStyle = (row + col) % 2 ? '#2479a9' : '#2b86b8';
+          ctx.fillRect(x, y, TILE, TILE);
+          ctx.fillStyle = 'rgba(255,255,255,.11)';
+          ctx.fillRect(x + 7, y + 14 + Math.sin(elapsed * 2 + col) * 3, 25, 3);
+        } else if (type === 'path') {
+          ctx.fillStyle = (row + col) % 2 ? '#9b8157' : '#a98d5d';
+          ctx.fillRect(x, y, TILE, TILE);
+          ctx.fillStyle = 'rgba(58,43,27,.17)';
+          ctx.fillRect(x + 7, y + 11, 5, 4);
+          ctx.fillRect(x + 28, y + 31, 7, 5);
+        } else {
+          const dark = type === 'darkGrass';
+          ctx.fillStyle = dark
+            ? ((row + col) % 2 ? '#3a7f49' : '#347843')
+            : ((row + col) % 2 ? '#4f9a54' : '#579f5b');
+          ctx.fillRect(x, y, TILE, TILE);
+          ctx.fillStyle = 'rgba(22,79,33,.20)';
+          if ((row * 13 + col * 7) % 5 === 0) {
+            ctx.fillRect(x + 10, y + 9, 3, 8);
+            ctx.fillRect(x + 14, y + 13, 3, 5);
+          }
+        }
+        ctx.strokeStyle = 'rgba(20,35,20,.055)';
+        ctx.strokeRect(x, y, TILE, TILE);
+      }
+    }
+  }
+
+  function drawTree(t) {
+    const s = t.size;
+    const sway = Math.sin(elapsed * 1.4 + t.sway) * 1.5;
+    ctx.save();
+    ctx.translate(t.x, t.y);
+    ctx.scale(s, s);
+    ctx.fillStyle = 'rgba(0,0,0,.22)';
+    ctx.beginPath(); ctx.ellipse(4, 19, 26, 11, 0, 0, TAU); ctx.fill();
+    ctx.fillStyle = '#65401f';
+    ctx.fillRect(-7, -2, 14, 31);
+    ctx.fillStyle = '#85562a';
+    ctx.fillRect(-7, -2, 6, 31);
+    const hiddenHere = player.hidden && player.cover === t;
+    const canopies = [
+      [-14 + sway, -18, 25, '#2b7539'],
+      [11 + sway, -17, 23, '#358845'],
+      [-2 + sway, -34, 27, '#3e9650'],
+      [0 + sway, -15, 30, '#327f41']
+    ];
+    for (const [x,y,r,c] of canopies) {
+      ctx.fillStyle = c;
+      ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,.07)';
+      ctx.beginPath(); ctx.arc(x - r*.25, y - r*.35, r*.35, 0, TAU); ctx.fill();
+    }
+    if (hiddenHere) {
+      drawGhostPlayer(0, -25, 13 / s);
+      ctx.strokeStyle = `rgba(155,235,255,${.42 + Math.sin(elapsed * 5) * .12})`;
+      ctx.lineWidth = 2 / s;
+      ctx.setLineDash([5 / s, 4 / s]);
+      ctx.beginPath(); ctx.arc(0, -25, 20 / s, 0, TAU); ctx.stroke();
+      ctx.setLineDash([]);
+    }
+    ctx.restore();
+  }
+
+  function drawBush(b) {
+    const hiddenHere = player.hidden && player.cover === b;
+    ctx.save();
+    ctx.translate(b.x, b.y);
+    ctx.scale(b.size, b.size);
+    ctx.fillStyle = 'rgba(0,0,0,.18)';
+    ctx.beginPath(); ctx.ellipse(3, 13, 25, 9, 0, 0, TAU); ctx.fill();
+    const blobs = [[-14,0,15],[0,-7,18],[15,1,15],[-3,7,17]];
+    blobs.forEach(([x,y,r], i) => {
+      ctx.fillStyle = i % 2 ? '#287a3b' : '#329048';
+      ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); ctx.fill();
+    });
+    ctx.fillStyle = '#d4445e';
+    ctx.beginPath(); ctx.arc(-9, -6, 2.5, 0, TAU); ctx.arc(10, 3, 2.5, 0, TAU); ctx.fill();
+    if (hiddenHere) {
+      drawGhostPlayer(0, -2, 12 / b.size);
+      ctx.strokeStyle = `rgba(155,235,255,${.38 + Math.sin(elapsed * 5) * .1})`;
+      ctx.lineWidth = 2 / b.size;
+      ctx.setLineDash([4 / b.size, 4 / b.size]);
+      ctx.beginPath(); ctx.arc(0, -2, 18 / b.size, 0, TAU); ctx.stroke();
+      ctx.setLineDash([]);
+    }
+    ctx.restore();
+  }
+
+  function drawRock(r) {
+    ctx.save();
+    ctx.translate(r.x, r.y);
+    ctx.scale(r.size, r.size);
+    ctx.fillStyle = 'rgba(0,0,0,.19)';
+    ctx.beginPath(); ctx.ellipse(4, 11, 21, 8, 0, 0, TAU); ctx.fill();
+    ctx.fillStyle = '#65717a';
+    ctx.beginPath();
+    ctx.moveTo(-19, 8); ctx.lineTo(-13, -10); ctx.lineTo(4, -17); ctx.lineTo(18, -5); ctx.lineTo(20, 10); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#87939b';
+    ctx.beginPath(); ctx.moveTo(-13,-10); ctx.lineTo(4,-17); ctx.lineTo(10,-6); ctx.lineTo(-6,-2); ctx.closePath(); ctx.fill();
+    ctx.restore();
+  }
+
+  function drawGems() {
+    for (const gem of gems) {
+      if (!isVisible(gem.x, gem.y, 70)) continue;
+      if (gem.collected && gem.collectAge >= gem.collectDuration) continue;
+
+      const collectedProgress = gem.collected ? clamp(gem.collectAge / gem.collectDuration, 0, 1) : 0;
+      const bob = Math.sin(elapsed * 3 + gem.spin) * 5 - collectedProgress * 34;
+      const width = 12 + Math.abs(Math.sin(gem.spin)) * 6;
+      const scale = gem.collected ? 1 + Math.sin(collectedProgress * Math.PI) * 1.15 : 1;
+      const alpha = gem.collected ? 1 - collectedProgress : 1;
+
+      ctx.save();
+      ctx.translate(gem.x, gem.y + bob);
+      ctx.scale(scale, scale);
+      ctx.globalAlpha = alpha;
+      if (!gem.collected) {
+        ctx.fillStyle = 'rgba(0,0,0,.18)';
+        ctx.beginPath(); ctx.ellipse(0, 17 - bob, 15, 6, 0, 0, TAU); ctx.fill();
+      }
+      ctx.shadowBlur = gem.collected ? 28 : 14;
+      ctx.shadowColor = `hsl(${gem.hue} 95% 70%)`;
+      ctx.fillStyle = `hsl(${gem.hue} 82% 58%)`;
+      ctx.beginPath();
+      ctx.moveTo(0,-17); ctx.lineTo(width, -3); ctx.lineTo(7, 16); ctx.lineTo(-7,16); ctx.lineTo(-width,-3); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,.72)';
+      ctx.beginPath(); ctx.moveTo(0,-13); ctx.lineTo(width*.55,-3); ctx.lineTo(0,1); ctx.closePath(); ctx.fill();
+
+      const twinkle = .5 + .5 * Math.sin(gem.sparkle * 2.4);
+      ctx.rotate(gem.sparkle);
+      ctx.strokeStyle = `rgba(255,255,255,${.3 + twinkle * .65})`;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(-22,0); ctx.lineTo(22,0); ctx.moveTo(0,-22); ctx.lineTo(0,22);
+      ctx.stroke();
+      ctx.restore();
+
+      if (gem.collected) {
+        ctx.save();
+        ctx.globalAlpha = alpha;
+        ctx.strokeStyle = `hsla(${gem.hue} 100% 78% / ${alpha})`;
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(gem.x, gem.y, 14 + collectedProgress * 34, 0, TAU);
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
+  }
+
+  function drawPlayer(p) {
+    if (player.hidden) return;
+    const blink = player.invulnerable > 0 && Math.floor(player.invulnerable * 10) % 2 === 0;
+    if (blink) return;
+    const speedRatio = clamp(Math.hypot(player.vx, player.vy) / player.speed, 0, 1);
+    const bounce = Math.abs(Math.sin(player.roll * .9)) * 2.5 * speedRatio;
+    ctx.save();
+    ctx.translate(p.x, p.y - bounce);
+    ctx.fillStyle = 'rgba(0,0,0,.24)';
+    ctx.beginPath(); ctx.ellipse(4, 16 + bounce, 18 - speedRatio * 2, 8 - speedRatio, 0, 0, TAU); ctx.fill();
+    ctx.scale(1 + player.squish * .08, 1 - player.squish * .06);
+    drawBlueBall(0, 0, PLAYER_RADIUS, 1, true);
+    ctx.restore();
+  }
+
+  function drawBlueBall(x, y, radius, alpha = 1, eyes = true) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.globalAlpha *= alpha;
+    const grad = ctx.createRadialGradient(-radius*.42,-radius*.52,2,0,0,radius*1.25);
+    grad.addColorStop(0, '#c5edff');
+    grad.addColorStop(.30, '#45b8ff');
+    grad.addColorStop(1, '#0756bf');
+    ctx.fillStyle = grad;
+    ctx.beginPath(); ctx.arc(0, 0, radius, 0, TAU); ctx.fill();
+    ctx.strokeStyle = 'rgba(3,49,121,.9)'; ctx.lineWidth = Math.max(1.5, radius*.12); ctx.stroke();
+    ctx.fillStyle = 'rgba(255,255,255,.42)';
+    ctx.beginPath(); ctx.arc(-radius*.34, -radius*.42, radius*.28, 0, TAU); ctx.fill();
+    if (eyes) {
+      ctx.fillStyle = '#eefaff';
+      const eyeX = player.facingX * radius*.32;
+      const eyeY = player.facingY * radius*.32 - radius*.18;
+      ctx.beginPath(); ctx.arc(eyeX - player.facingY*radius*.25, eyeY + player.facingX*radius*.25, radius*.16, 0, TAU); ctx.fill();
+      ctx.beginPath(); ctx.arc(eyeX + player.facingY*radius*.25, eyeY - player.facingX*radius*.25, radius*.16, 0, TAU); ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  function drawGhostPlayer(x, y, radius) {
+    ctx.save();
+    ctx.globalAlpha = .28 + Math.sin(elapsed * 4.5) * .055;
+    ctx.shadowBlur = 16;
+    ctx.shadowColor = '#85dbff';
+    drawBlueBall(x, y, radius, 1, true);
+    ctx.restore();
+  }
+
+  function drawEnemy(e) {
+    ctx.save();
+    ctx.translate(e.x, e.y + Math.sin(e.phase) * 2);
+    ctx.fillStyle = 'rgba(0,0,0,.25)';
+    ctx.beginPath(); ctx.ellipse(4, 15, 17, 7, 0, 0, TAU); ctx.fill();
+    const grad = ctx.createRadialGradient(-5,-7,2,0,0,18);
+    grad.addColorStop(0, '#ffb0ad');
+    grad.addColorStop(.3, '#f34d47');
+    grad.addColorStop(1, '#a80f22');
+    ctx.fillStyle = grad;
+    ctx.beginPath(); ctx.arc(0,0,ENEMY_RADIUS,0,TAU); ctx.fill();
+    ctx.strokeStyle = '#6f0713'; ctx.lineWidth = 2; ctx.stroke();
+    const dx = player.x - e.x, dy = player.y - e.y;
+    const len = Math.hypot(dx,dy) || 1;
+    const fx = dx/len, fy = dy/len;
+    ctx.fillStyle = '#fff';
+    ctx.beginPath(); ctx.arc(fx*5 - fy*4, fy*5 + fx*4 - 2, 2.4, 0, TAU); ctx.fill();
+    ctx.beginPath(); ctx.arc(fx*5 + fy*4, fy*5 - fx*4 - 2, 2.4, 0, TAU); ctx.fill();
+    if (e.alert > 0) {
+      ctx.fillStyle = '#ffd64a';
+      ctx.font = '900 19px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('!', 0, -22);
+    }
+    ctx.restore();
+  }
+
+  function drawParticles() {
+    for (const p of particles) {
+      const alpha = clamp(p.life / p.maxLife, 0, 1);
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.rotate(p.rotation || 0);
+      if (p.type === 'gem') {
+        ctx.fillStyle = `rgba(190,250,255,${alpha})`;
+        drawStar(0, 0, 4, p.size * alpha, p.size * .35 * alpha);
+        ctx.fill();
+      } else {
+        ctx.fillStyle = p.type === 'hit'
+          ? `rgba(255,80,80,${alpha})`
+          : `rgba(225,205,155,${alpha * .5})`;
+        ctx.beginPath(); ctx.arc(0, 0, p.size * alpha, 0, TAU); ctx.fill();
+      }
+      ctx.restore();
+    }
+  }
+
+  function drawStar(x, y, points, outer, inner) {
+    ctx.beginPath();
+    for (let i = 0; i < points * 2; i++) {
+      const angle = -Math.PI / 2 + i * Math.PI / points;
+      const radius = i % 2 === 0 ? outer : inner;
+      const px = x + Math.cos(angle) * radius;
+      const py = y + Math.sin(angle) * radius;
+      if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+    }
+    ctx.closePath();
+  }
+
+  function drawFloatingTexts() {
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.font = '900 15px ui-sans-serif, system-ui, sans-serif';
+    for (const text of floatingTexts) {
+      const alpha = clamp(text.life / text.maxLife, 0, 1);
+      ctx.globalAlpha = Math.min(1, alpha * 1.5);
+      ctx.lineWidth = 4;
+      ctx.strokeStyle = 'rgba(4,30,38,.8)';
+      ctx.strokeText(text.text, text.x, text.y);
+      ctx.fillStyle = '#caffff';
+      ctx.fillText(text.text, text.x, text.y);
+    }
+    ctx.restore();
+  }
+
+  function drawCoverPrompt() {
+    if (player.hidden || gameOver || victory) return;
+    const cover = nearestCover();
+    if (!cover) return;
+    ctx.save();
+    ctx.translate(cover.x, cover.y - (cover.type === 'tree' ? 75 : 48));
+    ctx.fillStyle = 'rgba(8,15,23,.88)';
+    roundRect(ctx, -55, -16, 110, 31, 10);
+    ctx.fill();
+    ctx.fillStyle = '#fff';
+    ctx.font = '800 13px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(cover.type === 'tree' ? 'SPACE: CLIMB' : 'SPACE: HIDE', 0, 0);
+    ctx.restore();
+  }
+
+  function roundRect(context, x, y, w, h, r) {
+    context.beginPath();
+    context.moveTo(x+r,y); context.arcTo(x+w,y,x+w,y+h,r); context.arcTo(x+w,y+h,x,y+h,r);
+    context.arcTo(x,y+h,x,y,r); context.arcTo(x,y,x+w,y,r); context.closePath();
+  }
+
+  function drawMinimap() {
+    if (!gameStarted) return;
+    const compact = viewportW < 700 || viewportH < 620;
+    const mapW = compact ? 132 : 188;
+    const mapH = mapW * WORLD_H / WORLD_W;
+    const margin = compact ? 12 : 18;
+    const x = viewportW - mapW - margin;
+    const y = viewportH - mapH - margin;
+    const scaleX = mapW / WORLD_W;
+    const scaleY = mapH / WORLD_H;
+
+    ctx.save();
+    ctx.fillStyle = 'rgba(5,14,18,.82)';
+    ctx.strokeStyle = 'rgba(210,245,255,.42)';
+    ctx.lineWidth = 2;
+    roundRect(ctx, x - 7, y - 24, mapW + 14, mapH + 31, 10);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle = '#d9f6ff';
+    ctx.font = '800 10px ui-sans-serif, system-ui, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText('WORLD MAP', x, y - 9);
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(x, y, mapW, mapH);
+    ctx.clip();
+    ctx.fillStyle = '#285f31';
+    ctx.fillRect(x, y, mapW, mapH);
+
+    for (let row = 0; row < WORLD_ROWS; row++) {
+      for (let col = 0; col < WORLD_COLS; col++) {
+        const type = terrain[row][col];
+        if (type === 'water') ctx.fillStyle = '#2c83ae';
+        else if (type === 'path') ctx.fillStyle = '#9a835b';
+        else if (type === 'darkGrass') ctx.fillStyle = '#24532d';
+        else continue;
+        ctx.fillRect(x + col * TILE * scaleX, y + row * TILE * scaleY, TILE * scaleX + .5, TILE * scaleY + .5);
+      }
+    }
+
+    for (const obj of objects) {
+      if (obj.type === 'tree') ctx.fillStyle = 'rgba(12,48,17,.9)';
+      else if (obj.type === 'bush') ctx.fillStyle = 'rgba(39,128,56,.8)';
+      else continue;
+      ctx.beginPath();
+      ctx.arc(x + obj.x * scaleX, y + obj.y * scaleY, obj.type === 'tree' ? 2.2 : 1.4, 0, TAU);
+      ctx.fill();
+    }
+
+    ctx.fillStyle = '#8fffff';
+    for (const gem of gems) {
+      if (gem.collected) continue;
+      ctx.fillRect(x + gem.x * scaleX - 1, y + gem.y * scaleY - 1, 3, 3);
+    }
+
+    ctx.fillStyle = '#ff394d';
+    for (const enemy of enemies) {
+      ctx.beginPath();
+      ctx.arc(x + enemy.x * scaleX, y + enemy.y * scaleY, 2.4, 0, TAU);
+      ctx.fill();
+    }
+
+    const playerPulse = 3.2 + Math.sin(elapsed * 6) * .6;
+    ctx.fillStyle = player.hidden ? 'rgba(98,203,255,.55)' : '#42b5ff';
+    ctx.beginPath();
+    ctx.arc(x + player.x * scaleX, y + player.y * scaleY, playerPulse, 0, TAU);
+    ctx.fill();
+    ctx.strokeStyle = '#eafaff';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    ctx.strokeStyle = 'rgba(255,255,255,.65)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(
+      x + camera.x * scaleX,
+      y + camera.y * scaleY,
+      Math.min(mapW, viewportW * scaleX),
+      Math.min(mapH, viewportH * scaleY)
+    );
+    ctx.restore();
+    ctx.restore();
+  }
+
+  function drawVignette() {
+    const g = ctx.createRadialGradient(viewportW/2, viewportH/2, Math.min(viewportW,viewportH)*.25, viewportW/2, viewportH/2, Math.max(viewportW,viewportH)*.72);
+    g.addColorStop(0, 'rgba(0,0,0,0)');
+    g.addColorStop(1, 'rgba(0,0,0,.38)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0,0,viewportW,viewportH);
+  }
+
+  function drawDangerTint() {
+    const alpha = .045 + Math.sin(elapsed * 7) * .015;
+    ctx.fillStyle = `rgba(255,20,35,${alpha})`;
+    ctx.fillRect(0,0,viewportW,viewportH);
+  }
+
+  function ensureAudio() {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+  }
+
+  function playTone(freq, duration, type = 'sine', volume = .04) {
+    if (!audioCtx) return;
+    const now = audioCtx.currentTime;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, now);
+    gain.gain.setValueAtTime(volume, now);
+    gain.gain.exponentialRampToValueAtTime(.0001, now + duration);
+    osc.connect(gain); gain.connect(audioCtx.destination);
+    osc.start(now); osc.stop(now + duration);
+  }
+
+  function frame(now) {
+    const dt = Math.min(.033, (now - lastTime) / 1000);
+    lastTime = now;
+    update(dt);
+    render();
+    requestAnimationFrame(frame);
+  }
+
+  buildWorld();
+  updateHud();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
