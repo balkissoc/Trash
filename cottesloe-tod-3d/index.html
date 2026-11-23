@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Cottesloe TOD — Interactive 3D Model</title>
+<style>
+  :root{--bg:#e7e4dc;--panel:#ffffffee;--text:#1d2528;--muted:#667277;--border:#ccd2d2;--accent:#2f6f63}
+  *{box-sizing:border-box} html,body{margin:0;height:100%;font-family:Arial,Helvetica,sans-serif;background:var(--bg);color:var(--text)}
+  body{overflow:hidden}.app{height:100%;display:grid;grid-template-rows:auto 1fr}.toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:10px 12px;background:var(--panel);border-bottom:1px solid var(--border);z-index:5}.toolbar strong{margin-right:6px}.toolbar button{border:1px solid var(--border);background:white;color:var(--text);border-radius:10px;padding:9px 12px;font-weight:700;cursor:pointer}.toolbar button:hover{background:#f2f4f3}.toolbar .status{font-size:13px;color:var(--muted);margin-left:auto}.stage{min-height:0;display:grid;grid-template-columns:1fr 250px}.viewport{position:relative;min-width:0}.sidebar{background:var(--panel);border-left:1px solid var(--border);padding:14px;overflow:auto}.sidebar h2{font-size:16px;margin:0 0 10px}.legend{display:grid;gap:9px;font-size:13px;color:var(--muted)}.item{display:flex;align-items:center;gap:8px}.swatch{width:16px;height:16px;border-radius:4px;flex:none}.line{height:4px;border-radius:2px}.note{font-size:12px;line-height:1.45;color:var(--muted);margin-top:16px;padding-top:12px;border-top:1px solid var(--border)}
+  .badge{position:absolute;left:12px;bottom:12px;background:#ffffffdd;border:1px solid var(--border);padding:8px 10px;border-radius:10px;font-size:12px;color:var(--muted);pointer-events:none}
+  @media(max-width:800px){.stage{grid-template-columns:1fr}.sidebar{display:none}.toolbar .status{width:100%;margin-left:0}.toolbar button{flex:1}.badge{font-size:11px}.viewport{min-height:calc(100vh - 112px)}}
+</style>
+<script type="importmap">
+{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.181.1/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.181.1/examples/jsm/"}}
+</script>
+</head>
+<body>
+<div class="app">
+  <div class="toolbar">
+    <strong>Cottesloe TOD — 3D Concept</strong>
+    <button id="view3d">3D View</button>
+    <button id="topView">Top View</button>
+    <button id="resetView">Reset</button>
+    <button id="toggleLabels">Hide Labels</button>
+    <span class="status" id="status">Loading model…</span>
+  </div>
+  <div class="stage">
+    <div class="viewport" id="viewport">
+      <div class="badge">Drag to rotate • right-drag/Shift-drag to pan • scroll/pinch to zoom</div>
+    </div>
+    <aside class="sidebar">
+      <h2>Design elements</h2>
+      <div class="legend">
+        <div class="item"><span class="swatch" style="background:#d9c7a4"></span>Apartments (4–6 storeys)</div>
+        <div class="item"><span class="swatch" style="background:#c98c72"></span>Mixed-use / shops / cafés</div>
+        <div class="item"><span class="swatch" style="background:#b9c995"></span>Townhouses / diverse housing</div>
+        <div class="item"><span class="swatch" style="background:#83a96b"></span>Parks & green space</div>
+        <div class="item"><span class="swatch" style="background:#78b8c8"></span>Pond / fountain</div>
+        <div class="item"><span class="swatch line" style="background:#4f8f78"></span>Dedicated cycle route</div>
+        <div class="item"><span class="swatch line" style="background:#d4b896"></span>Pedestrian spine / plaza</div>
+        <div class="item"><span class="swatch" style="background:#929292"></span>Limited consolidated parking</div>
+      </div>
+      <div class="note"><b>Purpose:</b> conceptual Year 10 geography site model based on the Cottesloe transit-oriented development plan. It is not survey-accurate or an engineering design.</div>
+    </aside>
+  </div>
+</div>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+const viewport = document.getElementById('viewport');
+const status = document.getElementById('status');
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0xe7e4dc);
+scene.fog = new THREE.Fog(0xe7e4dc, 430, 800);
+
+const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 2000);
+const renderer = new THREE.WebGLRenderer({antialias:true});
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1,2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+viewport.prepend(renderer.domElement);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true; controls.dampingFactor = 0.07;
+controls.maxPolarAngle = Math.PI*0.49; controls.minDistance = 70; controls.maxDistance = 560;
+
+scene.add(new THREE.HemisphereLight(0xffffff,0x817665,2.2));
+const sun = new THREE.DirectionalLight(0xffffff,3.0);
+sun.position.set(-90,170,130); sun.castShadow=true; sun.shadow.mapSize.set(2048,2048);
+sun.shadow.camera.left=-200;sun.shadow.camera.right=200;sun.shadow.camera.top=240;sun.shadow.camera.bottom=-240;scene.add(sun);
+
+const M={
+ ground:new THREE.MeshStandardMaterial({color:0xd5d1c5,roughness:1}),
+ apartment:new THREE.MeshStandardMaterial({color:0xd9c7a4,roughness:.82}),
+ mixed:new THREE.MeshStandardMaterial({color:0xc98c72,roughness:.82}),
+ townhouse:new THREE.MeshStandardMaterial({color:0xb9c995,roughness:.9}),
+ park:new THREE.MeshStandardMaterial({color:0x83a96b,roughness:1}),
+ path:new THREE.MeshStandardMaterial({color:0xd4b896,roughness:1}),
+ road:new THREE.MeshStandardMaterial({color:0x8b8c8a,roughness:1}),
+ bike:new THREE.MeshStandardMaterial({color:0x4f8f78,roughness:1}),
+ water:new THREE.MeshStandardMaterial({color:0x78b8c8,roughness:.25,metalness:.05}),
+ parking:new THREE.MeshStandardMaterial({color:0x929292,roughness:1}),
+ station:new THREE.MeshStandardMaterial({color:0x69757b,roughness:.8}),
+ roof:new THREE.MeshStandardMaterial({color:0xc8c6bd,roughness:.72}),
+ trunk:new THREE.MeshStandardMaterial({color:0x7c6245,roughness:1}),
+ tree:new THREE.MeshStandardMaterial({color:0x6e9662,roughness:1})
+};
+
+const labels=[];
+function box(x,z,w,d,h,material,y=0){const mesh=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),material);mesh.position.set(x,y+h/2,z);mesh.castShadow=h>1;mesh.receiveShadow=true;scene.add(mesh);return mesh}
+function plane(x,z,w,d,material,y=.03){return box(x,z,w,d,.12,material,y)}
+function tree(x,z,s=1){const t=new THREE.Mesh(new THREE.CylinderGeometry(.55*s,.72*s,3.5*s,10),M.trunk);t.position.set(x,1.75*s,z);t.castShadow=true;scene.add(t);const c=new THREE.Mesh(new THREE.SphereGeometry(2.4*s,14,12),M.tree);c.position.set(x,4.6*s,z);c.castShadow=true;c.receiveShadow=true;scene.add(c)}
+function activeBlock(x,z,w,d,storeys,rotation=0){const h=storeys*3.1;const b=box(x,z,w,d,h,M.apartment);b.rotation.y=rotation;const sh=box(x,z,w+.4,d+.4,3.1,M.mixed);sh.rotation.y=rotation;const r=box(x,z,w*.72,d*.72,.35,M.roof,h);r.rotation.y=rotation;return b}
+function addLabel(text,x,y,z,scale=1){const c=document.createElement('canvas');c.width=600;c.height=140;const ctx=c.getContext('2d');ctx.fillStyle='rgba(255,255,255,.93)';ctx.fillRect(6,18,588,104);ctx.strokeStyle='rgba(40,40,40,.35)';ctx.lineWidth=3;ctx.strokeRect(6,18,588,104);ctx.fillStyle='#202628';ctx.font='600 35px Arial';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(text,300,70);const tex=new THREE.CanvasTexture(c);tex.colorSpace=THREE.SRGBColorSpace;const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:tex,transparent:true,depthTest:false}));sp.position.set(x,y,z);sp.scale.set(41*scale,9.6*scale,1);scene.add(sp);labels.push(sp)}
+
+const shape=new THREE.Shape();shape.moveTo(-70,-155);shape.lineTo(72,-155);shape.lineTo(55,160);shape.lineTo(-32,160);shape.lineTo(-88,25);shape.closePath();
+const ground=new THREE.Mesh(new THREE.ShapeGeometry(shape),M.ground);ground.rotation.x=-Math.PI/2;ground.receiveShadow=true;scene.add(ground);
+
+plane(-2,-145,128,18,M.station,.15);box(-2,-145,112,12,3.5,M.station,.2);box(-2,-145,116,10,.8,M.roof,4.0);plane(-2,-125,54,30,M.path,.12);plane(47,-124,18,28,M.parking,.13);
+plane(-7,-25,18,180,M.path,.10);plane(2,38,76,54,M.path,.11);const plaza=new THREE.Mesh(new THREE.CylinderGeometry(35,35,.22,64),M.path);plaza.position.set(4,.18,39);plaza.receiveShadow=true;scene.add(plaza);
+plane(57,5,5,300,M.bike,.17);plane(-3,-119,56,5,M.bike,.17);
+plane(-48,-73,42,58,M.park,.14);const pond=new THREE.Mesh(new THREE.CylinderGeometry(12,12,.25,48),M.water);pond.position.set(-48,.33,-72);scene.add(pond);plane(27,111,54,72,M.park,.14);
+
+activeBlock(-47,-5,30,42,6,-.12);activeBlock(-45,58,30,43,6,-.12);activeBlock(-28,110,28,48,5,-.12);activeBlock(28,-40,31,45,5,.12);activeBlock(27,5,31,42,5,.12);activeBlock(-14,-58,30,38,5,-.05);activeBlock(-51,-55,28,40,5,-.12);activeBlock(33,58,26,34,4,.12);
+for(let i=0;i<5;i++)box(22+i*9,143,7,20,8.5,M.townhouse);for(let i=0;i<4;i++)box(18+i*10,-96,8,18,8.5,M.townhouse);
+
+box(38,39,24,30,13,M.mixed);box(38,39,21,27,.35,M.roof,13);plane(-36,145,28,18,M.parking,.12);plane(54,93,22,18,M.parking,.12);plane(34,-106,25,18,M.parking,.12);
+plane(-66,12,7,196,M.road,.08);plane(44,-76,7,80,M.road,.08);
+
+const trees=[[-54,-95],[-40,-98],[-57,-78],[-38,-63],[-58,-51],[-30,-77],[15,88],[30,90],[43,106],[13,122],[32,133],[47,139],[2,111],[-22,145],[-37,132],[-44,110],[-49,82],[-55,40],[-58,12],[-60,-20],[-61,-43],[51,133],[52,111],[53,72],[54,48],[54,18],[55,-12],[55,-44],[55,-75],[55,-107],[-18,33],[0,14],[19,30],[-16,49],[4,65],[22,52],[-4,-90],[-15,-105]];
+trees.forEach((p,i)=>tree(p[0],p[1],.75+(i%3)*.08));for(let i=0;i<12;i++){const a=i/12*Math.PI*2;tree(4+Math.cos(a)*29,39+Math.sin(a)*29,.68)}
+
+addLabel('Cottesloe Train Station',-4,11,-145,1.05);addLabel('Green Square',-48,9,-73,.88);addLabel('Civic Plaza',4,10,39,.9);addLabel('Community Park',28,9,112,.9);addLabel('Apartments',-28,23,110,.82);addLabel('Mixed-use Apartments',-46,25,58,.86);addLabel('Shops / Cafés',-46,7,38,.72);addLabel('Local Offices',38,16,39,.75);addLabel('Townhouses',38,11,143,.76);addLabel('Bike + Micromobility',40,7,-119,.74);
+
+const pts=shape.getPoints();const boundary=new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(pts.map(p=>new THREE.Vector3(p.x,.42,p.y))),new THREE.LineBasicMaterial({color:0x3e4644}));scene.add(boundary);
+
+function set3D(){camera.position.set(150,185,230);controls.target.set(0,0,15);controls.update()}
+function setTop(){camera.position.set(0,390,.1);controls.target.set(0,0,0);controls.update()}
+set3D();
+
+document.getElementById('view3d').addEventListener('click',set3D);document.getElementById('topView').addEventListener('click',setTop);document.getElementById('resetView').addEventListener('click',set3D);
+let labelsVisible=true;document.getElementById('toggleLabels').addEventListener('click',e=>{labelsVisible=!labelsVisible;labels.forEach(l=>l.visible=labelsVisible);e.currentTarget.textContent=labelsVisible?'Hide Labels':'Show Labels'});
+function resize(){const r=viewport.getBoundingClientRect();renderer.setSize(Math.max(320,r.width),Math.max(360,r.height),false);camera.aspect=Math.max(320,r.width)/Math.max(360,r.height);camera.updateProjectionMatrix()}resize();new ResizeObserver(resize).observe(viewport);
+status.textContent='Ready — drag to rotate, scroll/pinch to zoom.';
+function animate(){controls.update();renderer.render(scene,camera);requestAnimationFrame(animate)}animate();
+</script>
+</body>
+</html>
